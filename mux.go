@@ -132,22 +132,7 @@ func (tw traceware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// create span, based on specification, we need to set already known attributes
-	// when creating the span, the only thing missing here is HTTP route pattern since
-	// in go-chi/chi route pattern could only be extracted once the request is executed
-	// check here for details:
-	//
-	// https://github.com/go-chi/chi/issues/150#issuecomment-278850733
-	//
-	// if we have access to chi routes, we could extract the route pattern beforehand.
-	routePattern := r.Pattern
-
-	rctx := chi.RouteContext(r.Context())
-	if routePattern == "" && rctx != nil {
-		if s := rctx.Routes.Find(rctx, r.Method, r.URL.Path); s != "" {
-			routePattern = rctx.RoutePattern()
-		}
-	}
+	routePattern := extractRoutePattern(r)
 
 	if routePattern == "" {
 		routePattern = fmt.Sprintf("HTTP %s route not found", r.Method)
@@ -205,6 +190,7 @@ func (tw traceware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metricAttributes := semconv.MetricAttributes{
 		Req:                  r,
 		StatusCode:           statusCode,
+		Route:                routePattern,
 		AdditionalAttributes: tw.metricAttributesFromRequest(r),
 	}
 
@@ -225,4 +211,38 @@ func (tw traceware) metricAttributesFromRequest(r *http.Request) []attribute.Key
 		attributeForRequest = tw.metricAttributesFn(r)
 	}
 	return attributeForRequest
+}
+
+func extractRoutePattern(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+
+	rctx := chi.RouteContext(r.Context())
+	if rctx == nil || rctx.Routes == nil {
+		return ""
+	}
+
+	lookupCtx := chi.NewRouteContext()
+	lookupCtx.Routes = rctx.Routes
+
+	method := rctx.RouteMethod
+	if method == "" {
+		method = r.Method
+	}
+
+	return rctx.Routes.Find(lookupCtx, method, routePathForLookup(r, rctx))
+}
+
+func routePathForLookup(r *http.Request, rctx *chi.Context) string {
+	if rctx.RoutePath != "" {
+		return rctx.RoutePath
+	}
+	if r.URL.RawPath != "" {
+		return r.URL.RawPath
+	}
+	if r.URL.Path != "" {
+		return r.URL.Path
+	}
+	return "/"
 }

@@ -242,7 +242,7 @@ func (n CurrentHTTPServer) Route(route string) attribute.KeyValue {
 	return semconv.HTTPRoute(route)
 }
 
-func (n CurrentHTTPServer) MetricAttributes(server string, req *http.Request, statusCode int, additionalAttributes []attribute.KeyValue) []attribute.KeyValue {
+func (n CurrentHTTPServer) MetricAttributes(server string, req *http.Request, statusCode int, route string, additionalAttributes []attribute.KeyValue) []attribute.KeyValue {
 	num := len(additionalAttributes) + 3
 	var host string
 	var p int
@@ -270,6 +270,9 @@ func (n CurrentHTTPServer) MetricAttributes(server string, req *http.Request, st
 	if statusCode > 0 {
 		num++
 	}
+	if route != "" {
+		num++
+	}
 
 	attributes := slices.Grow(additionalAttributes, num)
 	attributes = append(attributes,
@@ -289,6 +292,9 @@ func (n CurrentHTTPServer) MetricAttributes(server string, req *http.Request, st
 
 	if statusCode > 0 {
 		attributes = append(attributes, semconv.HTTPResponseStatusCode(statusCode))
+	}
+	if route != "" {
+		attributes = append(attributes, semconv.HTTPRoute(route))
 	}
 	return attributes
 }

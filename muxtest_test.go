@@ -458,11 +458,68 @@ func TestWithPublicEndpointFn(t *testing.T) {
 	}
 }
 
+func TestDefaultMetricAttributes(t *testing.T) {
+	defaultMetricAttributes := []attribute.KeyValue{
+		attribute.String("http.route", "/user/{id:[0-9]+}"),
+		attribute.String("server.address", "foobar"),
+	}
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	router := chi.NewRouter()
+	router.Use(otelchi.Middleware("foobar",
+		otelchi.WithMeterProvider(meterProvider),
+	))
+
+	router.HandleFunc("GET /user/{id:[0-9]+}", ok)
+	r, err := http.NewRequest(http.MethodGet, "http://localhost/user/123", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, r)
+
+	rm := metricdata.ResourceMetrics{}
+	if err := reader.Collect(t.Context(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(len(rm.ScopeMetrics), 1); diff != "" {
+		t.Fatalf("(+want, -got)\n%s", diff)
+	}
+	if diff := cmp.Diff(len(rm.ScopeMetrics[0].Metrics), 3); diff != "" {
+		t.Fatalf("(+want, -got)\n%s", diff)
+	}
+
+	matchedMetrics := 0
+	for _, m := range rm.ScopeMetrics[0].Metrics {
+		switch d := m.Data.(type) {
+		case metricdata.Histogram[int64]:
+			if diff := cmp.Diff(len(d.DataPoints), 1); diff != "" {
+				t.Fatalf("(+want, -got)\n%s", diff)
+			}
+			containsAttributes(t, d.DataPoints[0].Attributes, defaultMetricAttributes)
+			matchedMetrics++
+		case metricdata.Histogram[float64]:
+			if diff := cmp.Diff(len(d.DataPoints), 1); diff != "" {
+				t.Fatalf("(+want, -got)\n%s", diff)
+			}
+			containsAttributes(t, d.DataPoints[0].Attributes, defaultMetricAttributes)
+			matchedMetrics++
+		default:
+			t.Fatalf("unexpected metric type %T", m.Data)
+		}
+	}
+	if diff := cmp.Diff(matchedMetrics, 3); diff != "" {
+		t.Fatalf("(+want, -got)\n%s", diff)
+	}
+}
+
 func TestHandlerWithMetricAttributesFn(t *testing.T) {
 	const (
-		serverRequestSize  = "http.server.request.size"
-		serverResponseSize = "http.server.response.size"
-		serverDuration     = "http.server.duration"
+		serverRequestSize  = "http.server.request.body.size"
+		serverResponseSize = "http.server.response.body.size"
+		serverDuration     = "http.server.request.duration"
 	)
 	testCases := []struct {
 		name                    string
@@ -490,59 +547,101 @@ func TestHandlerWithMetricAttributesFn(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		reader := sdkmetric.NewManualReader()
-		meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			reader := sdkmetric.NewManualReader()
+			meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 
-		router := chi.NewRouter()
-		router.Use(otelchi.Middleware("foobar",
-			otelchi.WithMeterProvider(meterProvider),
-			otelchi.WithMetricAttributesFn(tc.fn),
-		))
+			router := chi.NewRouter()
+			router.Use(otelchi.Middleware("foobar",
+				otelchi.WithMeterProvider(meterProvider),
+				otelchi.WithMetricAttributesFn(tc.fn),
+			))
 
-		router.HandleFunc("/user/{id:[0-9]+}", ok)
-		r, err := http.NewRequest(http.MethodGet, "http://localhost/user/123", http.NoBody)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, r)
-
-		rm := metricdata.ResourceMetrics{}
-		err = reader.Collect(t.Context(), &rm)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if diff := cmp.Diff(len(rm.ScopeMetrics), 1); diff != "" {
-			t.Fatalf("(+want, -got)\n%s", diff)
-		}
-		if diff := cmp.Diff(len(rm.ScopeMetrics[0].Metrics), 3); diff != "" {
-			t.Fatalf("(+want, -got)\n%s", diff)
-		}
-
-		// Verify that the additional attribute is present in the metrics.
-		for _, m := range rm.ScopeMetrics[0].Metrics {
-			switch m.Name {
-			case serverRequestSize, serverResponseSize:
-				d, ok := m.Data.(metricdata.Sum[int64])
-				if diff := cmp.Diff(ok, true); diff != "" {
-					t.Fatalf("(+want, -got)\n%s", diff)
-				}
-				if diff := cmp.Diff(len(d.DataPoints), 1); diff != "" {
-					t.Fatalf("(+want, -got)\n%s", diff)
-				}
-				containsAttributes(t, d.DataPoints[0].Attributes, testCases[0].wantAdditionalAttribute)
-			case serverDuration:
-				d, ok := m.Data.(metricdata.Histogram[float64])
-				if diff := cmp.Diff(ok, true); diff != "" {
-					t.Fatalf("(+want, -got)\n%s", diff)
-				}
-				if diff := cmp.Diff(len(d.DataPoints), 1); diff != "" {
-					t.Fatalf("(+want, -got)\n%s", diff)
-				}
-				containsAttributes(t, d.DataPoints[0].Attributes, testCases[0].wantAdditionalAttribute)
+			router.HandleFunc("/user/{id:[0-9]+}", ok)
+			r, err := http.NewRequest(http.MethodGet, "http://localhost/user/123", http.NoBody)
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, r)
+
+			rm := metricdata.ResourceMetrics{}
+			err = reader.Collect(t.Context(), &rm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(len(rm.ScopeMetrics), 1); diff != "" {
+				t.Fatalf("(+want, -got)\n%s", diff)
+			}
+			if diff := cmp.Diff(len(rm.ScopeMetrics[0].Metrics), 3); diff != "" {
+				t.Fatalf("(+want, -got)\n%s", diff)
+			}
+
+			// Verify that the additional attribute is present in the metrics.
+			matchedMetrics := 0
+			for _, m := range rm.ScopeMetrics[0].Metrics {
+				switch m.Name {
+				case serverRequestSize, serverResponseSize:
+					d, ok := m.Data.(metricdata.Histogram[int64])
+					if diff := cmp.Diff(ok, true); diff != "" {
+						t.Fatalf("(+want, -got)\n%s", diff)
+					}
+					if diff := cmp.Diff(len(d.DataPoints), 1); diff != "" {
+						t.Fatalf("(+want, -got)\n%s", diff)
+					}
+					containsAttributes(t, d.DataPoints[0].Attributes, tc.wantAdditionalAttribute)
+					matchedMetrics++
+				case serverDuration:
+					d, ok := m.Data.(metricdata.Histogram[float64])
+					if diff := cmp.Diff(ok, true); diff != "" {
+						t.Fatalf("(+want, -got)\n%s", diff)
+					}
+					if diff := cmp.Diff(len(d.DataPoints), 1); diff != "" {
+						t.Fatalf("(+want, -got)\n%s", diff)
+					}
+					containsAttributes(t, d.DataPoints[0].Attributes, tc.wantAdditionalAttribute)
+					matchedMetrics++
+				default:
+					t.Fatalf("unexpected metric name %q", m.Name)
+				}
+			}
+			if diff := cmp.Diff(matchedMetrics, 3); diff != "" {
+				t.Fatalf("(+want, -got)\n%s", diff)
+			}
+		})
 	}
+}
+
+func TestDefaultTraceWithNestedRoute(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	router := chi.NewRouter()
+	router.Use(otelchi.Middleware("foobar", otelchi.WithTracerProvider(provider)))
+
+	router.Route("/api", func(r chi.Router) {
+		r.Route("/users", func(r chi.Router) {
+			r.Get("/{id}", ok)
+		})
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/users/123", http.NoBody)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, r)
+
+	spans := sr.Ended()
+	if diff := cmp.Diff(len(spans), 1); diff != "" {
+		t.Fatalf("(+want, -got)\n%s", diff)
+	}
+	assertSpan(t, spans[0],
+		"GET /api/users/{id}",
+		trace.SpanKindServer,
+		attribute.String("server.address", "foobar"),
+		attribute.Int("http.response.status_code", http.StatusOK),
+		attribute.String("http.request.method", "GET"),
+		attribute.String("http.route", "/api/users/{id}"),
+	)
 }
 
 func containsAttributes(t *testing.T, attrSet attribute.Set, expected []attribute.KeyValue) {

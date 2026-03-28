@@ -26,6 +26,7 @@ func TestCurrentHttpServer_MetricAttributes(t *testing.T) {
 		server               string
 		req                  *http.Request
 		statusCode           int
+		route                string
 		additionalAttributes []attribute.KeyValue
 		wantFunc             func(t *testing.T, attrs []attribute.KeyValue)
 	}{
@@ -34,6 +35,7 @@ func TestCurrentHttpServer_MetricAttributes(t *testing.T) {
 			server:               "",
 			req:                  defaultRequest,
 			statusCode:           200,
+			route:                "",
 			additionalAttributes: []attribute.KeyValue{attribute.String("test", "test")},
 			wantFunc: func(t *testing.T, attrs []attribute.KeyValue) {
 				if len(attrs) != 7 {
@@ -60,10 +62,11 @@ func TestCurrentHttpServer_MetricAttributes(t *testing.T) {
 			server:               "example.com:9999",
 			req:                  defaultRequest,
 			statusCode:           200,
+			route:                "/path/${id}",
 			additionalAttributes: nil,
 			wantFunc: func(t *testing.T, attrs []attribute.KeyValue) {
-				if len(attrs) != 7 {
-					t.Fatalf("expected 7 attributes, got %d", len(attrs))
+				if len(attrs) != 8 {
+					t.Fatalf("expected 8 attributes, got %d", len(attrs))
 				}
 				want := []attribute.KeyValue{
 					attribute.String("http.request.method", "GET"),
@@ -73,6 +76,7 @@ func TestCurrentHttpServer_MetricAttributes(t *testing.T) {
 					attribute.String("network.protocol.name", "http"),
 					attribute.String("network.protocol.version", "1.1"),
 					attribute.Int64("http.response.status_code", 200),
+					attribute.String("http.route", "/path/${id}"),
 				}
 				if diff := cmp.Diff(want, attrs, cmpopts.IgnoreUnexported(attribute.Value{}), cmpopts.SortSlices(func(a, b attribute.KeyValue) bool {
 					return a.Key < b.Key
@@ -85,7 +89,7 @@ func TestCurrentHttpServer_MetricAttributes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CurrentHTTPServer{}.MetricAttributes(tt.server, tt.req, tt.statusCode, tt.additionalAttributes)
+			got := CurrentHTTPServer{}.MetricAttributes(tt.server, tt.req, tt.statusCode, tt.route, tt.additionalAttributes)
 			tt.wantFunc(t, got)
 		})
 	}

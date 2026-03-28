@@ -28,6 +28,26 @@ func TestRespWriterWriteHeader(t *testing.T) {
 	}
 }
 
+func TestRespWriterWriteInformationalStatusCode(t *testing.T) {
+	rw := NewRespWriterWrapper(&httptest.ResponseRecorder{}, func(int64) {})
+
+	rw.WriteHeader(http.StatusContinue)
+	if diff := cmp.Diff(http.StatusOK, rw.statusCode); diff != "" {
+		t.Errorf("statusCode mismatch after informational WriteHeader (-want +got):\n%s", diff)
+	}
+	if rw.wroteHeader {
+		t.Error("expected wroteHeader to be false after informational status")
+	}
+
+	rw.WriteHeader(http.StatusGone)
+	if diff := cmp.Diff(http.StatusGone, rw.statusCode); diff != "" {
+		t.Errorf("statusCode mismatch after final WriteHeader (-want +got):\n%s", diff)
+	}
+	if !rw.wroteHeader {
+		t.Error("expected wroteHeader to be true after final status")
+	}
+}
+
 func TestRespWriterFlush(t *testing.T) {
 	rw := NewRespWriterWrapper(&httptest.ResponseRecorder{}, func(int64) {})
 

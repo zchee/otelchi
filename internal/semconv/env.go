@@ -96,6 +96,7 @@ type ServerMetricData struct {
 type MetricAttributes struct {
 	Req                  *http.Request
 	StatusCode           int
+	Route                string
 	AdditionalAttributes []attribute.KeyValue
 }
 
@@ -121,7 +122,7 @@ var (
 )
 
 func (s HTTPServer) RecordMetrics(ctx context.Context, md ServerMetricData) {
-	attributes := CurrentHTTPServer{}.MetricAttributes(md.ServerName, md.Req, md.StatusCode, md.AdditionalAttributes)
+	attributes := CurrentHTTPServer{}.MetricAttributes(md.ServerName, md.Req, md.StatusCode, md.Route, md.AdditionalAttributes)
 	o := metric.WithAttributeSet(attribute.NewSet(attributes...))
 	recordOpts := metricRecordOptionPool.Get().(*[]metric.RecordOption)
 	*recordOpts = append(*recordOpts, o)
