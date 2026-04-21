@@ -4,12 +4,12 @@
 package semconv_test
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -63,7 +63,7 @@ func TestNewServerRecordMetrics(t *testing.T) {
 		attribute.String("url.scheme", "http"),
 	)
 
-	// the CurrentHTTPServer version
+	// the HTTPServer version
 	expectedCurrentScopeMetric := metricdata.ScopeMetrics{
 		Scope: instrumentation.Scope{
 			Name: "test",
@@ -215,8 +215,8 @@ func TestNewServerRecordMetrics(t *testing.T) {
 					},
 				},
 				MetricData: semconv.MetricData{
-					RequestSize: 100,
-					ElapsedTime: 300,
+					RequestSize:     100,
+					RequestDuration: 300 * time.Millisecond,
 				},
 			})
 
@@ -272,7 +272,7 @@ func TestNewTraceResponse(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got := semconv.CurrentHTTPServer{}.ResponseTraceAttrs(tt.resp)
+			got := semconv.HTTPServer{}.ResponseTraceAttrs(tt.resp)
 			if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(attribute.Value{}), cmpopts.EquateEmpty(), cmpopts.SortSlices(func(a, b attribute.KeyValue) bool {
 				return a.Key < b.Key
 			})); diff != "" {
@@ -296,8 +296,7 @@ func TestNewTraceRequest_Client(t *testing.T) {
 		attribute.Int("server.port", 8888),
 		attribute.String("network.protocol.version", "1.1"),
 	}
-	client := semconv.NewHTTPClient(nil)
-	got := client.RequestTraceAttrs(req)
+	got := semconv.NewHTTPClient(nil).RequestTraceAttrs(req)
 	if diff := cmp.Diff(want, got, cmpopts.IgnoreUnexported(attribute.Value{}), cmpopts.SortSlices(func(a, b attribute.KeyValue) bool {
 		return a.Key < b.Key
 	})); diff != "" {
@@ -315,8 +314,7 @@ func TestNewTraceResponse_Client(t *testing.T) {
 	}
 
 	for _, tt := range testcases {
-		client := semconv.NewHTTPClient(nil)
-		got := client.ResponseTraceAttrs(&tt.resp)
+		got := semconv.NewHTTPClient(nil).ResponseTraceAttrs(&tt.resp)
 		if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(attribute.Value{}), cmpopts.SortSlices(func(a, b attribute.KeyValue) bool {
 			return a.Key < b.Key
 		})); diff != "" {
@@ -339,7 +337,7 @@ func TestClientRequest(t *testing.T) {
 		attribute.Int("server.port", 8888),
 		attribute.String("network.protocol.version", "1.1"),
 	}
-	got := semconv.CurrentHTTPClient{}.RequestTraceAttrs(req)
+	got := semconv.HTTPClient{}.RequestTraceAttrs(req)
 	if diff := cmp.Diff(want, got, cmpopts.IgnoreUnexported(attribute.Value{}), cmpopts.SortSlices(func(a, b attribute.KeyValue) bool {
 		return a.Key < b.Key
 	})); diff != "" {
@@ -357,28 +355,11 @@ func TestClientResponse(t *testing.T) {
 	}
 
 	for _, tt := range testcases {
-		got := semconv.CurrentHTTPClient{}.ResponseTraceAttrs(&tt.resp)
+		got := semconv.HTTPClient{}.ResponseTraceAttrs(&tt.resp)
 		if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(attribute.Value{}), cmpopts.SortSlices(func(a, b attribute.KeyValue) bool {
 			return a.Key < b.Key
 		})); diff != "" {
 			t.Errorf("ResponseTraceAttrs() mismatch (-want +got):\n%s", diff)
-		}
-	}
-}
-
-func TestRequestErrorType(t *testing.T) {
-	testcases := []struct {
-		err  error
-		want attribute.KeyValue
-	}{
-		{err: errors.New("http: nil Request.URL"), want: attribute.String("error.type", "*errors.errorString")},
-		{err: customError{}, want: attribute.String("error.type", "github.com/gaudiy/gaudiy-go-kit/observer/contrib/instrumentation/github.com/go-chi/chi/v5/otelchi/internal/semconv_test.customError")},
-	}
-
-	for _, tt := range testcases {
-		got := semconv.CurrentHTTPClient{}.ErrorType(tt.err)
-		if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
-			t.Errorf("ErrorType() mismatch (-want +got):\n%s", diff)
 		}
 	}
 }
@@ -393,7 +374,7 @@ func TestNewClientRecordMetrics(t *testing.T) {
 		attribute.String("url.scheme", "http"),
 	)
 
-	// the CurrentHTTPClient version
+	// the HTTPClient version
 	expectedCurrentScopeMetric := metricdata.ScopeMetrics{
 		Scope: instrumentation.Scope{
 			Name: "test",
@@ -475,8 +456,8 @@ func TestNewClientRecordMetrics(t *testing.T) {
 
 			ctx := t.Context()
 			client.RecordMetrics(ctx, semconv.MetricData{
-				RequestSize: 100,
-				ElapsedTime: 300,
+				RequestSize:     100,
+				RequestDuration: 300 * time.Millisecond,
 			}, client.MetricOptions(semconv.MetricAttributes{
 				Req:        req,
 				StatusCode: 301,

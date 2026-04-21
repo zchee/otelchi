@@ -38,8 +38,7 @@ func BenchmarkHTTPServerRequest(b *testing.B) {
 	serv := NewHTTPServer(nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		benchHTTPServerRequestResults = serv.RequestTraceAttrs("", req, RequestTraceAttrsOpts{})
 	}
 }

@@ -8,10 +8,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	semconvNew "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // SplitHostPort splits a network address hostport of the form "host",
@@ -96,15 +97,15 @@ func netProtocol(proto string) (name, version string) {
 }
 
 var methodLookup = map[string]attribute.KeyValue{
-	http.MethodConnect: semconv.HTTPRequestMethodConnect,
-	http.MethodDelete:  semconv.HTTPRequestMethodDelete,
-	http.MethodGet:     semconv.HTTPRequestMethodGet,
-	http.MethodHead:    semconv.HTTPRequestMethodHead,
-	http.MethodOptions: semconv.HTTPRequestMethodOptions,
-	http.MethodPatch:   semconv.HTTPRequestMethodPatch,
-	http.MethodPost:    semconv.HTTPRequestMethodPost,
-	http.MethodPut:     semconv.HTTPRequestMethodPut,
-	http.MethodTrace:   semconv.HTTPRequestMethodTrace,
+	http.MethodConnect: semconvNew.HTTPRequestMethodConnect,
+	http.MethodDelete:  semconvNew.HTTPRequestMethodDelete,
+	http.MethodGet:     semconvNew.HTTPRequestMethodGet,
+	http.MethodHead:    semconvNew.HTTPRequestMethodHead,
+	http.MethodOptions: semconvNew.HTTPRequestMethodOptions,
+	http.MethodPatch:   semconvNew.HTTPRequestMethodPatch,
+	http.MethodPost:    semconvNew.HTTPRequestMethodPost,
+	http.MethodPut:     semconvNew.HTTPRequestMethodPut,
+	http.MethodTrace:   semconvNew.HTTPRequestMethodTrace,
 }
 
 func handleErr(err error) {
@@ -121,4 +122,9 @@ func standardizeHTTPMethod(method string) string {
 		method = "_OTHER"
 	}
 	return method
+}
+
+func durationToSeconds(d time.Duration) float64 {
+	// Use floating point division here for higher precision (instead of Seconds method).
+	return float64(d) / float64(time.Second)
 }
